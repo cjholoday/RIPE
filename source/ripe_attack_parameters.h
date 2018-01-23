@@ -39,7 +39,7 @@ enum code_ptrs     {RET_ADDR=300, OLD_BASE_PTR,
 
 };
 enum locations     {STACK=400, HEAP, BSS, DATA};
-enum functions     {MEMCPY=500, STRCPY, STRNCPY, SPRINTF, SNPRINTF,
+enum functions     {_MEMCPY=500, STRCPY, STRNCPY, SPRINTF, SNPRINTF,
                     STRCAT, STRNCAT, SSCANF, FSCANF, HOMEBREW};
 
 /* 2 overflow techniques */
