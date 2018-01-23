@@ -138,6 +138,8 @@ void __attribute__((__noinline__)) do_exit(void)
     exit(0);
 }
 
+void set_creat_regs(char *path, int mode) {}
+
 /**********/
 /* MAIN() */
 /**********/
@@ -264,6 +266,10 @@ int main(int argc, char **argv) {
   if(has_opened_output_stream) {
     fclose(output_stream);
   }
+
+
+  // cjh: set %rdi and %rsi just in case we are doing a base pointer attack
+  set_creat_regs("/tmp/rip-eval/f_xxxx", 700);
 }
 
 
@@ -933,12 +939,6 @@ void perform_attack(FILE *output_stream,
     break;
   }
 
-  /*
-   * gjd: do not bother to attempt the attack after the memory error.
-   * colton: let's give it a go
-   */
-  // do_exit();
-
   /*******************************************/
   /* Ensure that code pointer is overwritten */
   /*******************************************/
@@ -1134,6 +1134,8 @@ void perform_attack(FILE *output_stream,
 
     sleep(1);
   } /* DEBUG */
+
+  set_creat_regs("/tmp/rip-eval/f_xxxx", 700);
 }
 
 
