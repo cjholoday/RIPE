@@ -3,7 +3,7 @@
 
 #Depending on how you test your system you may want to comment, or uncomment
 #the following
-CFLAGS=-fno-stack-protector
+CFLAGS=-fno-stack-protector -z execstack -g
 CC=gcc
 all: ripe_attack_generator
 
