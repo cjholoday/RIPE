@@ -116,6 +116,11 @@ static boolean has_opened_output_stream = FALSE;
 static ATTACK_FORM attack;
 static char loose_change2[128];			//NN Sandwich the control vars
 
+// cjh: used to overwrite bss section targets. The buffer must be placed here
+//      because the ordering of the bss section cannot be manipulated from 
+//      perform_attack
+static char bss_buffer[128];
+
 static long int rop_sled[7] = {0,0xFFFFFFFF,0,0,0xFFFFFFFF,0,0};
 
 int fooz(char *a, int b){
@@ -342,17 +347,8 @@ void perform_attack(FILE *output_stream,
   static jmp_buf bss_jmp_buffer;
   static long *bss_mem_ptr;
   static char placeholder[128]; //NN provide enough space for shellcode
-  /* BSS buffers to inject into                                             */
-  /* Two buffers declared to be able to chose buffer address without NUL    */
-  /* Largest buffer declared last since it'll be "after" in the BSS seg     */
-  static char bss_buffer1[1];
-  static char bss_buffer2[128];
   static jmp_buf bss_jmp_buffer_indirect;
-
   static struct attackme bss_struct;
-  
-
-
 
 
   /* Pointer to buffer to overflow */
@@ -457,12 +453,8 @@ void perform_attack(FILE *output_stream,
 	break;
     }
 
-    if(contains_terminating_char((unsigned long)&bss_buffer1)) {
-      buffer = bss_buffer2;
-    } else {
-    /* @todo Currently just assumes the next address is OK   */
-      buffer = bss_buffer1;
-    }
+    buffer = bss_buffer;
+
     // Also set the location of the function pointer and the
     // longjmp buffer on the heap (the same since only choose one)
     heap_func_ptr = (void *)heap_buffer1;
@@ -1788,8 +1780,15 @@ boolean is_attack_possible() {
         (attack.code_ptr == STRUCT_FUNC_PTR_DATA) ||
         (attack.code_ptr == STRUCT_FUNC_PTR_BSS) )) {
       if(output_error_msg) {
-	fprintf(stderr, "Error: Impossible to perform a direct attack on the stack into another memory segment.\n");
+        fprintf(stderr, "Error: Impossible to perform a direct attack on the stack into another memory segment.\n");
       }
+      return FALSE;
+    }
+    else if (attack.technique == DIRECT && attack.code_ptr == FUNC_PTR_STACK_PARAM) {
+      // cjh: this type of attack COULD be done but it would require overwriting 
+      //      buffers backwards, which RIPE cannot support without significant
+      //      overhauling
+      fprintf(stderr, "Error: Impossible to perform attack because stack parameters are placed after all buffers.\n");
       return FALSE;
     }
     break;
