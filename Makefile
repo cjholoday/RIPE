@@ -4,7 +4,7 @@
 #Depending on how you test your system you may want to comment, or uncomment
 #the following
 CFLAGS=-fno-stack-protector -z execstack -g
-CC=gcc
+CC=cdi-gcc
 all: ripe_attack_generator
 
 clean:
@@ -13,6 +13,6 @@ clean:
 
 # ATTACK GENERATOR COMPILE
 ripe_attack_generator: ./source/ripe_attack_generator.c
-	${CC} ${CFLAGS} ./source/ripe_attack_generator.c -o ./build/ripe_attack_generator 
+	export CDI_MUSL_STATIC=1 && ${CC} ${CFLAGS} ./source/ripe_attack_generator.c -o ./build/ripe_attack_generator 
 	
 

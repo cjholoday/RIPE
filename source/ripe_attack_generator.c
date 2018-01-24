@@ -168,6 +168,17 @@ void __attribute__((__noinline__)) do_exit(void)
 
 void set_creat_regs(char *path, int mode) {}
 
+/*
+ * TODO
+ */
+void attack_wrapper(FILE *output_stream,
+		    int (*stack_func_ptr_param)(const char *)) {
+  perform_attack(output_stream, stack_func_ptr_param);
+
+  // cjh: set %rdi and %rsi just in case we are doing a base pointer attack
+  set_creat_regs("/tmp/rip-eval/f_xxxx", 700);
+}
+
 /**********/
 /* MAIN() */
 /**********/
@@ -284,8 +295,9 @@ int main(int argc, char **argv) {
 
   /* Check if attack form is possible */
   if(is_attack_possible()) {
-    //NN
-    perform_attack(output_stream, &dummy_function, stack_jmp_buffer_param_array[i]);
+    attack_wrapper(output_stream, &dummy_function);
+
+    perform_attack(output_stream, &dummy_function);
   } else {
     exit(ATTACK_IMPOSSIBLE);
   }
@@ -296,8 +308,6 @@ int main(int argc, char **argv) {
   }
 
 
-  // cjh: set %rdi and %rsi just in case we are doing a base pointer attack
-  set_creat_regs("/tmp/rip-eval/f_xxxx", 700);
 }
 
 
@@ -313,8 +323,7 @@ int main(int argc, char **argv) {
 /* PERFORM_ATTACK() */
 /********************/
 void perform_attack(FILE *output_stream,
-		    int (*stack_func_ptr_param)(const char *),
-		    jmp_buf stack_jmp_buffer_param) {
+		    int (*stack_func_ptr_param)(const char *)) {
 
   printf("target = %d\n", attack.function);
 
@@ -558,22 +567,23 @@ void perform_attack(FILE *output_stream,
       target_addr = &data_func_ptr1;
       break;
     case LONGJMP_BUF_STACK_VAR:
-      target_addr = &stack_jmp_buffer[0].__jmpbuf[5];
+      target_addr = &stack_jmp_buffer[0].__jb[5];
       break;
     case LONGJMP_BUF_STACK_PARAM:
-      target_addr = &stack_jmp_buffer_param[0].__jmpbuf[5];
+      // cjh: disable for cdi. we don't support longjmps for now
+      //target_addr = &stack_jmp_buffer_param[0].__jb[5];
       break;
     case LONGJMP_BUF_HEAP:
-      //target_addr = &heap_jmp_buffer[0].__jmpbuf[5];
+      //target_addr = &heap_jmp_buffer[0].__jb[5];
       printf("heap_jmp_buffer @%p\n",heap_jmp_buffer);
       target_addr = (void *)heap_jmp_buffer + 20; //NN now it should point to the correct entry of the
 					//jmp_buf structure
       break;
     case LONGJMP_BUF_BSS:
-      target_addr = &bss_jmp_buffer[0].__jmpbuf[5];
+      target_addr = &bss_jmp_buffer[0].__jb[5];
       break;
     case LONGJMP_BUF_DATA:
-      target_addr = &data_jmp_buffer[0].__jmpbuf[5];
+      target_addr = &data_jmp_buffer[0].__jb[5];
       break;
     case STRUCT_FUNC_PTR_STACK:
       target_addr = &stack_struct.func_ptr;
@@ -646,13 +656,14 @@ void perform_attack(FILE *output_stream,
     payload.jmp_buffer = &stack_jmp_buffer;
     break;
   case LONGJMP_BUF_STACK_PARAM:
-    if(setjmp(stack_jmp_buffer_param) != 0) {
-    /* setjmp() returns 0 if returning directly and non-zero when returning */
-    /* from longjmp() using the saved context. Attack failed.               */
-      return;
-    }
-    payload.jmp_buffer = (void *)stack_jmp_buffer_param;
-    payload.stack_jmp_buffer_param = &stack_jmp_buffer_param;
+    // cjh: disable for cdi
+    //if(setjmp(stack_jmp_buffer_param) != 0) {
+    ///* setjmp() returns 0 if returning directly and non-zero when returning */
+    ///* from longjmp() using the saved context. Attack failed.               */
+    //  return;
+    //}
+    //payload.jmp_buffer = (void *)stack_jmp_buffer_param;
+    //payload.stack_jmp_buffer_param = &stack_jmp_buffer_param;
     break;
   case LONGJMP_BUF_HEAP:
     if(setjmp(*heap_jmp_buffer) != 0) {
@@ -662,7 +673,8 @@ void perform_attack(FILE *output_stream,
     }
     
     payload.jmp_buffer = (void *)heap_jmp_buffer;
-    payload.stack_jmp_buffer_param = NULL;
+    // cjh: disable for cdi
+    //payload.stack_jmp_buffer_param = NULL;
     break;
   case LONGJMP_BUF_BSS:
     if(setjmp(bss_jmp_buffer) != 0) {
@@ -688,7 +700,8 @@ void perform_attack(FILE *output_stream,
     }
 
     payload.jmp_buffer = (void *)data_jmp_buffer;
-    payload.stack_jmp_buffer_param = NULL;
+    // cjh: disable for cdi
+    //payload.stack_jmp_buffer_param = NULL;
     break;
   default:
     // Not an attack against a longjmp buffer
@@ -773,21 +786,22 @@ void perform_attack(FILE *output_stream,
       	payload.overflow_ptr = &data_func_ptr1;
       break;
     case LONGJMP_BUF_STACK_VAR:
-      payload.overflow_ptr = &stack_jmp_buffer[0].__jmpbuf[5];
+      payload.overflow_ptr = &stack_jmp_buffer[0].__jb[5];
       break;
     case LONGJMP_BUF_STACK_PARAM:
-      payload.overflow_ptr = &stack_jmp_buffer_param[0].__jmpbuf[5];
+      // disable for cdi
+      //payload.overflow_ptr = &stack_jmp_buffer_param[0].__jb[5];
       break;
     case LONGJMP_BUF_HEAP:
-      //payload.overflow_ptr = &heap_jmp_buffer[0].__jmpbuf[5];
+      //payload.overflow_ptr = &heap_jmp_buffer[0].__jb[5];
       payload.overflow_ptr = (void *)heap_jmp_buffer + 20; // NN
       break;
     case LONGJMP_BUF_BSS:
-      //payload.overflow_ptr = &bss_jmp_buffer[0].__jmpbuf[5];
-      payload.overflow_ptr = &bss_jmp_buffer_indirect[0].__jmpbuf[5]; //NN
+      //payload.overflow_ptr = &bss_jmp_buffer[0].__jb[5];
+      payload.overflow_ptr = &bss_jmp_buffer_indirect[0].__jb[5]; //NN
       break;
     case LONGJMP_BUF_DATA:
-      payload.overflow_ptr = &data_jmp_buffer[0].__jmpbuf[5];
+      payload.overflow_ptr = &data_jmp_buffer[0].__jb[5];
       break;
     default:
       if(output_error_msg) {
@@ -1108,7 +1122,8 @@ void perform_attack(FILE *output_stream,
       longjmp(stack_jmp_buffer, 1);
       break;
     case LONGJMP_BUF_STACK_PARAM:
-      longjmp(stack_jmp_buffer_param, 1);
+      // cjh: disable for cdi
+      //longjmp(stack_jmp_buffer_param, 1);
       break;
     case LONGJMP_BUF_HEAP:
       longjmp(*heap_jmp_buffer, 1);
