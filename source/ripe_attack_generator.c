@@ -169,7 +169,7 @@ void __attribute__((__noinline__)) do_exit(void)
 void set_creat_regs(char *path, int mode) {}
 
 /*
- * TODO
+ * See commit message for details
  */
 void attack_wrapper(FILE *output_stream,
 		    int (*stack_func_ptr_param)(const char *)) {
