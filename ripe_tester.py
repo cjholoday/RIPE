@@ -13,6 +13,7 @@
 
 import os
 import sys
+import subprocess
 
 # longjump is forbidden for CDI. Remove it from the tests
 code_ptr = ["ret", 
@@ -41,8 +42,8 @@ funcs = ["memcpy"]
 
 locations = ["stack", "heap", "bss", "data"];
 attacks = [
-        "createfile", "returnintolibc", "rop"
-        # "nonop", "simplenop", "polynop", 
+        "createfile", "returnintolibc", "rop",
+        "nonop", "simplenop", "polynop"
 ]
 
 techniques = []
@@ -63,7 +64,11 @@ else:
 
 i = 0
 if not os.path.exists("/tmp/rip-eval"):
-    os.system("mkdir /tmp/rip-eval");
+    subprocess.check_call(['mkdir', '/tmp/rip-eval'])
+
+# cjh: always copy just in case the attack script has changed
+subprocess.check_call(['cp', 'attack.sh', '/tmp/rip-eval/attack.sh'])
+
 
 total_ok=0;
 total_fail=0;
@@ -76,6 +81,11 @@ for attack in attacks:
         for loc in locations:
             for ptr in code_ptr:
                 for func in funcs:
+                    # cjh: this particular combination causes issues if I fail to create a new bash instance
+                    # before running ripe_tester.py. TODO: investigate this potential bug
+                    #
+                    #if not (attack == "simplenop" and loc == "heap" and tech == "indirect" and ptr == "baseptr"):
+                    #    continue
                     i = 0
                     s_attempts = 0
                     attack_possible = 1
@@ -86,7 +96,6 @@ for attack in attacks:
                         cmdline = "./build/ripe_attack_generator -t "+tech+" -i "+attack+" -c " + ptr + "  -l " + loc +" -f " + func + " > /tmp/ripe_log 2>&1"
                         os.system(cmdline)
                         log = open("/tmp/ripe_log","r")
-        
 
                         if log.read().find("Impossible") != -1:
                             # print cmdline,"\t\t","NOT POSSIBLE"
@@ -97,7 +106,6 @@ for attack in attacks:
                         if os.path.exists("/tmp/rip-eval/f_xxxx"):
                             s_attempts += 1        
                             os.system("rm /tmp/rip-eval/f_xxxx")
-
 
                     if attack_possible == 0:
                         total_np += 1;
