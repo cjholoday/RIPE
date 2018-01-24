@@ -70,10 +70,11 @@ if not os.path.exists("/tmp/rip-eval"):
 subprocess.check_call(['cp', 'attack.sh', '/tmp/rip-eval/attack.sh'])
 
 
-total_ok=0;
-total_fail=0;
-total_some=0;
-total_np = 0;
+total_ok = 0
+total_fail = 0
+total_some = 0
+total_np = 0
+total_caught = 0
 
 
 for attack in attacks:
@@ -88,6 +89,7 @@ for attack in attacks:
                     #    continue
                     i = 0
                     s_attempts = 0
+                    c_attempts = 0
                     attack_possible = 1
                     while i < repeat_times:
                         i += 1
@@ -97,10 +99,14 @@ for attack in attacks:
                         os.system(cmdline)
                         log = open("/tmp/ripe_log","r")
 
-                        if log.read().find("Impossible") != -1:
+                        log_text = log.read()
+                        if "Impossible" in log_text:
                             # print cmdline,"\t\t","NOT POSSIBLE"
                             attack_possible = 0;
-                            break;    #Not possible once, not possible always :)
+                            break    #Not possible once, not possible always :)
+
+                        if "cdi" in log_text:
+                            c_attempts += 1
 
 
                         if os.path.exists("/tmp/rip-eval/f_xxxx"):
@@ -111,7 +117,10 @@ for attack in attacks:
                         total_np += 1;
                         continue
 
-                    if s_attempts == repeat_times:
+                    if c_attempts == repeat_times:
+                        print cmdline,"\t\tCAUGHT\t", c_attempts,"/",repeat_times
+                        total_caught += 1
+                    elif s_attempts == repeat_times:
                         print cmdline,"\t\tOK\t", s_attempts,"/",repeat_times
                         total_ok += 1;
                     elif s_attempts == 0:
@@ -122,5 +131,5 @@ for attack in attacks:
                         total_some +=1;
                         
 
-total_attacks = total_ok + total_some + total_fail + total_np;
-print "\n||Summary|| OK: ",total_ok," ,SOME: ",total_some," ,FAIL: ",total_fail," ,NP: ",total_np," ,Total Attacks: ",total_attacks
+total_attacks = total_ok + total_some + total_fail + total_np + total_caught
+print "\n||Summary|| OK: ",total_ok," ,SOME: ",total_some," ,FAIL: ",total_fail," ,CAUGHT: ",total_caught," ,NP: ",total_np," ,Total Attacks: ",total_attacks
